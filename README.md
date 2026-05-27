@@ -70,10 +70,10 @@ playwright install chromium
 
 **3. Set your Telegram credentials**
 
-In `telegram_alert.py`, replace:
+In `.env`, replace:
 
 ```python
-TOKEN = "your_telegram_bot_token"
+TOKEN_KEY = "your_telegram_bot_token"
 CHAT_ID = your_chat_id
 ```
 
