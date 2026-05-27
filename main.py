@@ -46,7 +46,7 @@ def run_telegram():
 
     tg_app.job_queue.run_repeating(
         telegram_alert.sending_alerts,
-        interval=60,
+        interval=60*60*24,
         first=5
     )
 

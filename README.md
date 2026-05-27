@@ -91,7 +91,7 @@ python main.py
 This starts everything in one command:
 - Flask dashboard at `http://localhost:5000`
 - Scraper runs immediately, then every 24 hours
-- Telegram bot checks for price drops every 60 seconds
+- Telegram bot checks for price drops every 24 hours after each scrape
 
 ---
 
