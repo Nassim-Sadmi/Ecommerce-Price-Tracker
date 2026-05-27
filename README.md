@@ -74,9 +74,12 @@ In `.env`, replace:
 
 ```python
 TOKEN_KEY = "your_telegram_bot_token"
-CHAT_ID = your_chat_id
 ```
 
+In `telegram_alert.py`, replace :
+```python
+CHAT_ID = your_chat_id
+```
 To get these: create a bot via [@BotFather](https://t.me/BotFather) on Telegram, then get your chat ID via [@userinfobot](https://t.me/userinfobot).
 
 **4. Run**
