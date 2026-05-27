@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Price Tracker Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+
+    <style>
+        body {
+            background-color: #0f1117;
+            color: white;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 30px;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 25px;
+        }
+
+        .card {
+            background-color: #1a1d26;
+            border-radius: 14px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+
+        .images {
+            display: flex;
+            gap: 14px;
+            margin-bottom: 18px;
+        }
+
+        .image-box {
+            flex: 1;
+            background: white;
+            border-radius: 12px;
+            height: 220px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            padding: 10px;
+        }
+
+        .image-box img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .product-name {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+
+        .price-row {
+            margin-bottom: 10px;
+        }
+
+        .label {
+            color: #9ca3af;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+
+        .amazon { background-color: #ff9900; color: black; }
+        .ebay { background-color: #86b817; color: black; }
+
+        .confidence {
+            margin-top: 12px;
+            font-size: 14px;
+            color: #cbd5e1;
+        }
+
+        .history-btn {
+            margin-top: 15px;
+            width: 100%;
+            padding: 10px;
+            background: transparent;
+            border: 1px solid #374151;
+            border-radius: 10px;
+            color: #94a3b8;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .history-btn:hover {
+            border-color: #6366f1;
+            color: #6366f1;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: #1a1d26;
+            border-radius: 16px;
+            padding: 30px;
+            width: 90%;
+            max-width: 800px;
+            position: relative;
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: white;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 15px; right: 20px;
+            background: none;
+            border: none;
+            color: #9ca3af;
+            font-size: 22px;
+            cursor: pointer;
+        }
+
+        .modal-close:hover { color: white; }
+
+        #chart { min-height: 300px; }
+
+        .no-data {
+            text-align: center;
+            color: #6b7280;
+            padding: 60px 0;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Price Tracker Dashboard</h1>
+
+    <div class="grid">
+        {% for item in products %}
+        <div class="card">
+            <div class="images">
+                <div class="image-box">
+                    <a href="{{ item['amazon_url'] }}" target="_blank">
+                        <img src="{{ item['amazon_img'] }}">
+                    </a>
+                </div>
+                <div class="image-box">
+                    <a href="{{ item['ebay_url'] }}" target="_blank">
+                        <img src="{{ item['ebay_img'] }}">
+                    </a>
+                </div>
+            </div>
+
+            <div class="product-name">{{ item['name'] }}</div>
+
+            <div class="price-row">
+                <span class="label">Amazon:</span>
+                ${{ item['amazon_price'] if item['amazon_price'] else 'N/A' }}
+            </div>
+
+            <div class="price-row">
+                <span class="label">eBay:</span>
+                ${{ item['ebay_price'] if item['ebay_price'] else 'N/A' }}
+            </div>
+
+            <div class="badge {{ item['best_deal'] }}">
+                Best Deal: {{ item['best_deal'] if item['best_deal'] else 'Unknown' }}
+            </div>
+
+            <div class="confidence">
+                Match Score: {{ item['confidence'] }}%
+            </div>
+
+            <button
+                class="history-btn"
+                onclick="openModal({{ item['id'] }}, '{{ item['name'] }}')">
+                📈 View Price History
+            </button>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Modal -->
+    <div class="modal-overlay" id="modalOverlay" onclick="closeModalOutside(event)">
+        <div class="modal">
+            <button class="modal-close" onclick="closeModal()">✕</button>
+            <div class="modal-title" id="modalTitle"></div>
+            <div id="chart"></div>
+        </div>
+    </div>
+
+    <script>
+        let chartInstance = null;
+
+        async function openModal(productId, productName) {
+            document.getElementById('modalTitle').textContent = productName;
+            document.getElementById('modalOverlay').classList.add('active');
+            document.getElementById('chart').innerHTML = '';
+
+            if (chartInstance) {
+                chartInstance.destroy();
+                chartInstance = null;
+            }
+
+            const response = await fetch(`/api/price_history/${productId}`);
+            const data = await response.json();
+
+            if (data.length === 0) {
+                document.getElementById('chart').innerHTML = '<div class="no-data">No price history yet</div>';
+                return;
+            }
+
+            const dates = data.map(row => row.date);
+            const amazonPrices = data.map(row => row.amazon_price);
+            const ebayPrices = data.map(row => row.ebay_price);
+
+            const options = {
+                chart: {
+                    type: 'line',
+                    height: 300,
+                    background: 'transparent',
+                    toolbar: { show: false }
+                },
+                theme: { mode: 'dark' },
+                series: [
+                    { name: 'Amazon', data: amazonPrices },
+                    { name: 'eBay', data: ebayPrices }
+                ],
+                xaxis: {
+                    categories: dates,
+                    labels: { style: { colors: '#9ca3af' } }
+                },
+                yaxis: {
+                    labels: {
+                        style: { colors: '#9ca3af' },
+                        formatter: val => '$' + val.toFixed(2)
+                    }
+                },
+                colors: ['#f97316', '#86b817'],
+                stroke: { curve: 'smooth', width: 3 },
+                grid: { borderColor: '#1f2937' },
+                tooltip: { theme: 'dark' },
+                legend: { labels: { colors: '#cbd5e1' } }
+            };
+
+            chartInstance = new ApexCharts(document.getElementById('chart'), options);
+            chartInstance.render();
+        }
+
+        function closeModal() {
+            document.getElementById('modalOverlay').classList.remove('active');
+            if (chartInstance) {
+                chartInstance.destroy();
+                chartInstance = null;
+            }
+        }
+
+        function closeModalOutside(event) {
+            if (event.target === document.getElementById('modalOverlay')) {
+                closeModal();
+            }
+        }
+    </script>
+
+</body>
+</html>
