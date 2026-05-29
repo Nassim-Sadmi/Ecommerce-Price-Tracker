@@ -6,6 +6,7 @@ import app
 import scraping
 import telegram_alert
 
+from telegram import Update
 from telegram.ext import ApplicationBuilder
 
 TOKEN = telegram_alert.TOKEN
@@ -37,20 +38,37 @@ def run_scraper():
             print(f"[SCRAPER ERROR] {e}")
         time.sleep(60 * 60 * 24)
 
+
 # --------------------
 # Telegram bot
 # --------------------
 def run_telegram():
+    # Brief delay on startup so any previous instance has time to release
+    # its long-poll connection before we open a new one.
+    time.sleep(5)
 
-    tg_app = ApplicationBuilder().token(TOKEN).build()
+    while True:
+        try:
+            tg_app = ApplicationBuilder().token(TOKEN).build()
 
-    tg_app.job_queue.run_repeating(
-        telegram_alert.sending_alerts,
-        interval=60*60*24,
-        first=5
-    )
+            tg_app.job_queue.run_repeating(
+                telegram_alert.sending_alerts,
+                interval=60 * 60 * 24,
+                first=5
+            )
 
-    tg_app.run_polling()
+            tg_app.run_polling(allowed_updates=Update.ALL_TYPES)
+
+        except Exception as e:
+            err = str(e)
+            if "Conflict" in err:
+                # Another instance is still polling; wait and retry.
+                print(f"[TELEGRAM] Conflict detected — another instance is "
+                      f"still running. Retrying in 15 s… ({e})")
+                time.sleep(15)
+            else:
+                print(f"[TELEGRAM ERROR] {e}")
+                time.sleep(5)
 
 
 # --------------------
