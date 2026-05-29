@@ -1,10 +1,13 @@
 from playwright.async_api import async_playwright
 import asyncio
 import json
+import logging
 import re
 import string
 import sqlite3
 import os
+
+logger = logging.getLogger(__name__)
 
 
 def database_creation():
@@ -451,11 +454,37 @@ async def main():
             return None
 
     database_creation()
-    arguments = load_args_json("config.json")
+
+    config_path = "config.json"
+    if not os.path.exists(config_path):
+        logger.error(
+            "config.json not found. Current working directory: %s — "
+            "make sure config.json is present in that directory.",
+            os.getcwd()
+        )
+        return
+
+    try:
+        arguments = load_args_json(config_path)
+    except json.JSONDecodeError:
+        logger.exception("config.json exists but contains malformed JSON — cannot parse it.")
+        return
+    except Exception:
+        logger.exception("Unexpected error while loading config.json (cwd: %s).", os.getcwd())
+        return
+
     products = arguments['products']
+    logger.info("Config loaded successfully. Products to scrape (%d): %s", len(products), products)
     semaphore = asyncio.Semaphore(3)
 
-    async with async_playwright() as playwright:
+    try:
+        playwright_ctx = async_playwright()
+        playwright = await playwright_ctx.__aenter__()
+    except Exception:
+        logger.exception("Failed to start Playwright.")
+        return
+
+    try:
         browser = await playwright.chromium.launch(
             headless=True,
             args=[
@@ -464,62 +493,74 @@ async def main():
                 '--no-sandbox',
             ]
         )
+    except Exception:
+        logger.exception("Failed to launch Chromium browser.")
+        await playwright_ctx.__aexit__(None, None, None)
+        return
 
+    try:
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
         )
+    except Exception:
+        logger.exception("Failed to create browser context.")
+        await browser.close()
+        await playwright_ctx.__aexit__(None, None, None)
+        return
 
-        amazon_results = await asyncio.gather(
-            *[scrape_amazon(context, semaphore, product) for product in products]
+    amazon_results = await asyncio.gather(
+        *[scrape_amazon(context, semaphore, product) for product in products]
+    )
+
+    # in main() loop, after unpacking amazon_result:
+    #numbers_reference_product = re.findall(r'-?\d+\.?\d*', product)
+    for product, amazon_result in zip(products, amazon_results):
+        #for amazon_result in amazon_results:
+        if amazon_result is None or isinstance(amazon_result, Exception):
+            continue
+
+        cleaned_title, amazon_price, amazon_url, amazon_img = amazon_result
+        numbers_reference_product = re.findall(r'-?\d+\.?\d*', product)
+
+        ebay_result = await scrape_ebay(
+            context,
+            product,
+            cleaned_title,
+            numbers_reference_product
         )
 
-        # in main() loop, after unpacking amazon_result:
-        #numbers_reference_product = re.findall(r'-?\d+\.?\d*', product)
-        for product, amazon_result in zip(products, amazon_results):
-            #for amazon_result in amazon_results:
-            if amazon_result is None or isinstance(amazon_result, Exception):
-                continue
+        if ebay_result is None:
+            continue
 
-            cleaned_title, amazon_price, amazon_url, amazon_img = amazon_result
-            numbers_reference_product = re.findall(r'-?\d+\.?\d*', product)
+        ebay_url, ebay_img, ebay_price, confidence = ebay_result
 
-            ebay_result = await scrape_ebay(
-                context,
-                product,
-                cleaned_title,
-                numbers_reference_product
-            )
+        product_id = product_insertion(product, amazon_url, ebay_url, amazon_img, ebay_img)
 
-            if ebay_result is None:
-                continue
+        amazon_price = normalize(amazon_price)
+        ebay_price = normalize(ebay_price)
 
-            ebay_url, ebay_img, ebay_price, confidence = ebay_result
-
-            product_id = product_insertion(product, amazon_url, ebay_url, amazon_img, ebay_img)
-
-            amazon_price = normalize(amazon_price)
-            ebay_price = normalize(ebay_price)
-
+        best_deal = None
+        if amazon_price is not None and ebay_price is not None:
+            best_deal = "amazon" if amazon_price < ebay_price else "ebay"
+        elif amazon_price is not None:
+            best_deal = "amazon"
+        elif ebay_price is not None:
+            best_deal = "ebay"
+        else:
             best_deal = None
-            if amazon_price is not None and ebay_price is not None:
-                best_deal = "amazon" if amazon_price < ebay_price else "ebay"
-            elif amazon_price is not None:
-                best_deal = "amazon"
-            elif ebay_price is not None:
-                best_deal = "ebay"
-            else:
-                best_deal = None
 
-            price_insertion(
-                product_id,
-                amazon_price,
-                ebay_price,
-                confidence,
-                best_deal
-            )
+        price_insertion(
+            product_id,
+            amazon_price,
+            ebay_price,
+            confidence,
+            best_deal
+        )
 
-        await browser.close()
+    await browser.close()
+    await playwright_ctx.__aexit__(None, None, None)
+    logger.info("Scrape cycle completed successfully — %d products processed.", len(products))
 
 
 if __name__ == "__main__":
