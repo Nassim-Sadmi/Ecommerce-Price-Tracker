@@ -4,6 +4,9 @@ from urllib.parse import urlparse
 from telegram import Bot
 import json
 import os
+from dotenv import load_dotenv
+load_dotenv()
+
 TOKEN = os.getenv("TOKEN_KEY")
 CHAT_ID = 7859694973
 

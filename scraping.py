@@ -457,7 +457,7 @@ async def main():
 
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(
-            headless=True,
+            headless=False,
             args=[
                 '--disable-blink-features=AutomationControlled',
                 '--disable-automation',

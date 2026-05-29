@@ -1,16 +1,14 @@
 {
   "products": [
-    "Apple AirPods Pro 2",
-    "Samsung Galaxy Watch 6",
     "Logitech MX Master 3S mouse",
     "Razer BlackShark V2 headset",
     "Nike Air Force 1 white",
-    "Nintendo Switch OLED",
+    "EA SPORT UFC 6",
     "Canon EOS R50 camera",
-    "Dell XPS 13 laptop",
+    "Hisense 32-Inch Class A4 Series HD Smart",
     "GoPro HERO12 Black",
     "Anker 737 Power Bank 24,000mAh",
-    "Tea pot"
+    "Playstation 5 "
   ],
   "alert_threshold_percent": 5
 }
